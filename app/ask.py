@@ -14,6 +14,7 @@ import argparse
 
 from google import genai
 from google.genai import errors
+from google.genai.types import GenerateContentResponseUsageMetadata
 
 from app.config import MODEL, api_error_message, get_api_key
 
@@ -21,14 +22,21 @@ from app.config import MODEL, api_error_message, get_api_key
 DEFAULT_QUESTION = "AIE2026の講座の宿題にある「3レベル」とは何ですか？"
 
 
-def ask(question: str) -> str:
+def ask(question: str) -> tuple[str | None, int | None, int | None]:
     client = genai.Client(api_key=get_api_key())
     response = client.models.generate_content(model=MODEL, contents=question)
 
-    # TODO(第1回 演習): response.usage_metadata から
-    #   入力トークン数と出力トークン数を表示してみよう（Copilotに頼んでよい）
+    metadata: GenerateContentResponseUsageMetadata | None = response.usage_metadata
+    output: str | None = response.text
 
-    return response.text
+    if output is None or metadata is None:
+        return output, None, None
+    
+    # https://ai.google.dev/gemini-api/docs/generate-content/tokens?hl=ja
+    input_token: int | None = metadata.prompt_token_count
+    output_token: int | None = metadata.candidates_token_count
+
+    return output, input_token, output_token
 
 
 def main() -> None:
@@ -39,9 +47,12 @@ def main() -> None:
     print(f"[model] {MODEL}")
     print(f"[質問] {args.question}\n")
     try:
-        print(ask(args.question))
+        response, in_count, out_count = ask(args.question)
+        print(f"[回答]\n{response}\n{"-" * 50}")
+        print(f"[Input Token] {in_count} Token")
+        print(f"[Output Token] {out_count} Token")
     except errors.APIError as e:
-        print(api_error_message(e.code, e.message))
+        print(api_error_message(e.code, e.message)) # type: ignore
         raise SystemExit(1)
 
 
