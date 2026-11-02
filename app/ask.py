@@ -89,11 +89,11 @@ def main() -> None:
             if ftt is not None:
                 tps = out_count / (end_time - ftt)
             
-            print(f"\n{'-' * 50}\n")
+            print(f"\n\n{'-' * 50}\n")
             print(f"[Input Token] {in_count} Token")
             print(f"[Output Token] {out_count} Token")
-            print(f"[TTFT] {ttft} sec")
-            print(f"[TPS] {tps} token/sec")
+            print(f"[TTFT] {ttft:.4} sec")
+            print(f"[TPS] {tps:.4} token/sec")
             print(f"\n{'-' * 50}\n")
         except errors.APIError as e:
             print(api_error_message(e.code, e.message))  # type: ignore
