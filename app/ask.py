@@ -10,11 +10,14 @@
 （第3回で、用語集を検索できるエージェントにして改善する）
 """
 
-import argparse
+import time
+from typing import Iterator
 
+from dotenv import load_dotenv
 from google import genai
 from google.genai import errors
-from google.genai.types import GenerateContentResponseUsageMetadata
+from google.genai.chats import Chat
+from google.genai.types import GenerateContentResponse, GenerateContentResponseUsageMetadata
 
 from app.config import MODEL, api_error_message, get_api_key
 
@@ -22,38 +25,79 @@ from app.config import MODEL, api_error_message, get_api_key
 DEFAULT_QUESTION = "AIE2026の講座の宿題にある「3レベル」とは何ですか？"
 
 
-def ask(question: str) -> tuple[str | None, int | None, int | None]:
-    client = genai.Client(api_key=get_api_key())
-    response = client.models.generate_content(model=MODEL, contents=question)
+def ask(chat: Chat, question: str):
+    response: Iterator[GenerateContentResponse] = chat.send_message_stream(question)
 
-    metadata: GenerateContentResponseUsageMetadata | None = response.usage_metadata
-    output: str | None = response.text
+    for message in response:
+        metadata: GenerateContentResponseUsageMetadata | None = message.usage_metadata
+        output: str | None = message.text
 
-    if output is None or metadata is None:
-        return output, None, None
-    
-    # https://ai.google.dev/gemini-api/docs/generate-content/tokens?hl=ja
-    input_token: int | None = metadata.prompt_token_count
-    output_token: int | None = metadata.candidates_token_count
+        if output is None or metadata is None:
+            return output, None, None
 
-    return output, input_token, output_token
+        # https://ai.google.dev/gemini-api/docs/generate-content/tokens?hl=ja
+        input_token: int | None = metadata.prompt_token_count
+        output_token: int | None = metadata.candidates_token_count
+
+        yield output, input_token, output_token
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="素のLLMに質問する")
-    parser.add_argument("question", nargs="?", default=DEFAULT_QUESTION)
-    args = parser.parse_args()
+    load_dotenv(override=True)
+
+    # マルチターン会話での初期化
+    client = genai.Client(api_key=get_api_key())
+    chat: Chat = client.chats.create(model=MODEL)
 
     print(f"[model] {MODEL}")
-    print(f"[質問] {args.question}\n")
-    try:
-        response, in_count, out_count = ask(args.question)
-        print(f"[回答]\n{response}\n{"-" * 50}")
-        print(f"[Input Token] {in_count} Token")
-        print(f"[Output Token] {out_count} Token")
-    except errors.APIError as e:
-        print(api_error_message(e.code, e.message)) # type: ignore
-        raise SystemExit(1)
+
+    while True:
+        prompt = input("プロンプトを入力(終了はqを入力) > ")
+        if not prompt:
+            prompt = DEFAULT_QUESTION
+
+        # 終了判定
+        if prompt == "q":
+            break
+
+        try:
+            print(f"\n{'-' * 50}\n")
+            print(f"[回答]")
+
+            in_count: int | None = None
+            out_count: int = 0
+            start_time: float = time.perf_counter()
+            # Time to First Token
+            ttft: float | None = None
+            # Token per second
+            tps: float | None = None
+            # First Token Time
+            ftt: float | None = None
+
+            for message in ask(chat, prompt):
+                response, in_c, out_c = message
+                print(response, end="")
+                in_count = in_c
+                out_count = out_c if out_c is not None else 0
+
+                if ftt is None:
+                    ftt = time.perf_counter()
+                    ttft = ftt - start_time
+
+            end_time = time.perf_counter()
+
+            if ftt is not None:
+                tps = out_count / (end_time - ftt)
+            
+            print(f"\n\n{'-' * 50}\n")
+            print(f"[Input Token] {in_count} Token")
+            print(f"[Output Token] {out_count} Token")
+            print(f"[TTFT] {ttft:.4} sec")
+            print(f"[TPS] {tps:.4} token/sec")
+            print(f"\n{'-' * 50}\n")
+        except errors.APIError as e:
+            print(api_error_message(e.code, e.message))  # type: ignore
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":
