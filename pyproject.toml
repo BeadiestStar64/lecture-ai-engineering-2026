@@ -6,9 +6,15 @@ readme = "README.md"
 requires-python = ">=3.12"
 # 年度中に壊れないよう、バージョンは固定する
 dependencies = [
+    "accelerate==1.15.0",
+    "datasets==5.1.0",
     "google-genai==2.31.0",
+    "peft==0.21.1",
     "pydantic-ai-slim[google,mcp]==2.57.0",  # mcp は第5回（MCP サーバー・クライアント）で使う
     "python-dotenv>=1.2.4",
+    "torch>=2.14.1",
+    "transformers==5.18.0",
+    "trl==1.14.2",
 ]
 
 [dependency-groups]
@@ -22,3 +28,13 @@ dev = [
 pythonpath = ["."]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning:pydantic_graph"]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
